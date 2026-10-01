@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>free models monitor</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Cpath d='M8 21l4-10 4 7 4-4 4 7' stroke='%2334d399' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="pulse" id="pulse"></span>
+        <h1>free models monitor</h1>
+        <span class="sub" id="source">openrouter</span>
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="meta">
+        <span id="updated">connecting...</span>
+        <span class="dot">&middot;</span>
+        <span id="next">next poll -</span>
+        <span class="dot">&middot;</span>
+        <span id="cycle">cycle 0</span>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <label class="field">
+        <span>sort</span>
+        <select id="sort">
+          <option value="score">score</option>
+          <option value="uptime">uptime 5m</option>
+          <option value="latency">latency</option>
+          <option value="context">context window</option>
+          <option value="providers">free providers</option>
+          <option value="rank">rank (live)</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>search</span>
+        <input id="search" type="search" placeholder="model or vendor" autocomplete="off" />
+      </label>
+      <label class="check"><input type="checkbox" id="autoScroll" checked /> <span>follow top 20</span></label>
+      <div class="legend">
+        <span class="chip chip-live">live</span>
+        <span class="chip chip-warn">expiring</span>
+        <span class="chip chip-down">no live provider</span>
+      </div>
+    </section>
+
+    <main>
+      <section class="panel">
+        <h2>top free models <span id="countLabel"></span></h2>
+        <div class="tablewrap">
+          <table id="board">
+            <thead>
+              <tr>
+                <th class="num">#</th>
+                <th>model</th>
+                <th class="num">score</th>
+                <th class="num">uptime 5m</th>
+                <th class="num">latency</th>
+                <th class="num">context</th>
+                <th>free providers</th>
+                <th>trend</th>
+                <th>score mix</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel dupes">
+        <h2>
+          duplicate files
+          <span class="hint" id="dupesMeta">not scanned yet</span>
+          <button id="dupesScan" type="button" class="act">scan</button>
+        </h2>
+        <div id="dupesBody" class="dupesbody">
+          <p class="empty">no scan yet &mdash; press <b>scan</b> to hash your home folder</p>
+        </div>
+      </section>
+
+      <aside class="panel feed">
+        <h2>change feed</h2>
+        <ul id="feedList" class="feedlist"></ul>
+        <h2 class="mt">watchlist <span class="hint">(outside top 20)</span></h2>
+        <ul id="extrasList" class="extras"></ul>
+      </aside>
+    </main>
+
+    <footer>
+      <span id="errors"></span>
+      <span class="hint">free tier = zero prompt &amp; completion price. uptime/latency come from provider telemetry.</span>
+      <span class="hint">duplicate scan is read-only: it reports copies, it never deletes anything.</span>
+    </footer>
+
+    <dialog id="detail">
+      <div id="detailBody"></div>
+      <button id="detailClose">close</button>
+    </dialog>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

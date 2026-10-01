@@ -1,0 +1,16 @@
+{
+  "name": "free-models-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Real-time monitoring of the top 20 free-tier LLM models available on OpenRouter",
+  "engines": {
+    "node": ">=20.12.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "cli": "node src/cli.js",
+    "test": "node --test test/*.test.js",
+    "lint": "node scripts/lint.mjs"
+  }
+}
