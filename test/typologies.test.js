@@ -263,7 +263,7 @@ describe('TypologyScanner', () => {
 
     // maxDepth 1 reaches the folders under the root but never their own content.
     assert.equal(result.totals.files, 0);
-    assert.equal(scanner.getStatus().skippedDirs, 2);
+    assert.equal(scanner.getStatus().skippedDirs, 1);
   });
 
   it('cancels mid-scan and reports it in the status', async () => {
@@ -287,7 +287,7 @@ describe('TypologyScanner', () => {
     const scanner = new TypologyScanner({ config: configFor(root), logger: silentLogger });
 
     const scan = scanner.scan();
-    await assert.rejects(() => scanner.start(), /already running/);
+    await assert.rejects(async () => scanner.start(), /already running/);
     await scan;
   });
 

@@ -57,7 +57,7 @@ const TYPOLOGY_DEFS = [
     hint: 'recordings, clips and screen captures',
     extensions: [
       '.mp4', '.m4v', '.mpg', '.mpeg', '.mpe', '.mkv', '.mk3d', '.avi', '.mov', '.qt', '.wmv', '.asf', '.flv',
-      '.f4v', '.webm', '.mts', '.m2ts', '.m2v', '.3gp', '.3g2', '.ogv', '.rmvb', '.vob', '.divx', '.mxf',
+      '.f4v', '.webm', '.m2ts', '.m2v', '.3gp', '.3g2', '.ogv', '.rmvb', '.vob', '.divx', '.mxf',
     ],
   },
   {
@@ -161,7 +161,7 @@ export function typologyById(id) {
 /** Trailing extension, lowercased, or a placeholder when the name has none. */
 export function extensionOf(name) {
   const base = String(name ?? '').split(/[\\/]/).pop() ?? '';
-  const match = /(\.[A-Za-z0-9_+-]{1,12})$/.exec(base);
+  const match = /(\.[A-Za-z0-9_+!~-]{1,12})$/.exec(base);
   return match ? match[1].toLowerCase() : '(none)';
 }
 
