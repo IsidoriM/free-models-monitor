@@ -47,7 +47,7 @@ async function serveStatic(res, publicDir, urlPath) {
   }
 }
 
-export function createServer({ monitor, config = defaultConfig, duplicates = null }) {
+export function createServer({ monitor, config = defaultConfig, trojans = null, typologies = null }) {
   const clients = new Set();
 
   const broadcast = (event, data) => {
@@ -66,7 +66,8 @@ export function createServer({ monitor, config = defaultConfig, duplicates = nul
   });
   monitor.on('changes', (changes) => broadcast('changes', { changes }));
   monitor.on('error', (error) => broadcast('error', { message: error.message }));
-  duplicates?.on('update', (payload) => broadcast('duplicates', payload));
+  trojans?.on('update', (payload) => broadcast('trojans', payload));
+  typologies?.on('update', (payload) => broadcast('typologies', payload));
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
@@ -123,8 +124,11 @@ export function createServer({ monitor, config = defaultConfig, duplicates = nul
         res.write('retry: 5000\n\n');
         const snapshot = monitor.store.getState();
         res.write(`event: snapshot\ndata: ${JSON.stringify({ ...snapshot, status: monitor.getStatus() })}\n\n`);
-        if (duplicates) {
-          res.write(`event: duplicates\ndata: ${JSON.stringify(duplicates.snapshot())}\n\n`);
+        if (trojans) {
+          res.write(`event: trojans\ndata: ${JSON.stringify(trojans.snapshot())}\n\n`);
+        }
+        if (typologies) {
+          res.write(`event: typologies\ndata: ${JSON.stringify(typologies.snapshot())}\n\n`);
         }
         clients.add(res);
         const heartbeat = setInterval(() => {
@@ -138,23 +142,67 @@ export function createServer({ monitor, config = defaultConfig, duplicates = nul
         return undefined;
       }
 
-      if (route === '/api/duplicates/scan') {
+      if (route === '/api/trojans/scan') {
         if (req.method !== 'POST') return sendJson(res, 405, { error: 'use POST' });
-        if (!duplicates) return sendJson(res, 503, { error: 'duplicate scanner disabled' });
+        if (!trojans) return sendJson(res, 503, { error: 'trojan scanner disabled' });
         req.resume();
         try {
-          return sendJson(res, 202, { started: true, status: duplicates.start() });
+          return sendJson(res, 202, { started: true, status: trojans.start() });
         } catch (error) {
           return sendJson(res, 409, { error: error.message });
         }
       }
 
-      if (route === '/api/duplicates') {
-        if (!duplicates) return sendJson(res, 503, { error: 'duplicate scanner disabled' });
-        return sendJson(res, 200, duplicates.snapshot());
+      if (route === '/api/trojans/cancel') {
+        if (req.method !== 'POST') return sendJson(res, 405, { error: 'use POST' });
+        if (!trojans) return sendJson(res, 503, { error: 'trojan scanner disabled' });
+        req.resume();
+        const running = trojans.isRunning();
+        trojans.cancel();
+        return sendJson(res, 200, { cancelled: running, status: trojans.getStatus() });
+      }
+
+      if (route === '/api/trojans') {
+        if (!trojans) return sendJson(res, 503, { error: 'trojan scanner disabled' });
+        return sendJson(res, 200, trojans.snapshot());
+      }
+
+      if (route === '/api/typologies/scan') {
+        if (req.method !== 'POST') return sendJson(res, 405, { error: 'use POST' });
+        if (!typologies) return sendJson(res, 503, { error: 'typology scanner disabled' });
+        req.resume();
+        try {
+          return sendJson(res, 202, { started: true, status: typologies.start() });
+        } catch (error) {
+          return sendJson(res, 409, { error: error.message });
+        }
+      }
+
+      if (route === '/api/typologies/cancel') {
+        if (req.method !== 'POST') return sendJson(res, 405, { error: 'use POST' });
+        if (!typologies) return sendJson(res, 503, { error: 'typology scanner disabled' });
+        req.resume();
+        const running = typologies.isRunning();
+        typologies.cancel();
+        return sendJson(res, 200, { cancelled: running, status: typologies.getStatus() });
+      }
+
+      if (route === '/api/typologies') {
+        if (!typologies) return sendJson(res, 503, { error: 'typology scanner disabled' });
+        return sendJson(res, 200, typologies.snapshot());
       }
 
       if (route.startsWith('/api/')) return sendJson(res, 404, { error: 'unknown endpoint' });
+
+      // The file typologies census gets its own page so it can own the full width.
+      if (route === '/typologies' || route === '/typologies/') {
+        return await serveStatic(res, config.publicDir, '/typologies.html');
+      }
+
+      // Same for the nations of the model producers: its own page, its own report.
+      if (route === '/origins' || route === '/origins/') {
+        return await serveStatic(res, config.publicDir, '/origins.html');
+      }
 
       return await serveStatic(res, config.publicDir, route);
     } catch (error) {
