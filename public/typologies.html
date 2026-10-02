@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>file typologies</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Cpath d='M7 10h7l2 3h9v10H7z' fill='none' stroke='%2334d399' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="typologies.css" />
+  </head>
+  <body class="ft">
+    <header class="topbar">
+      <div class="brand">
+        <span class="pulse" id="pulse"></span>
+        <h1>file typologies</h1>
+        <a class="sub link" href="/">free models monitor</a>
+      </div>
+      <nav class="menu" aria-label="sections">
+        <a href="/typologies" aria-current="page">FileTypologies</a>
+        <a href="/origins">ModelOrigins</a>
+      </nav>
+      <div class="stats" id="kpis"></div>
+      <div class="meta">
+        <span id="updated">connecting...</span>
+        <span class="dot">&middot;</span>
+        <span id="roots">-</span>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <button id="scan" type="button" class="act act-primary">scan</button>
+      <button id="cancel" type="button" class="act" disabled>cancel</button>
+      <label class="field">
+        <span>search</span>
+        <input id="search" type="search" placeholder="typology or extension" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>sort</span>
+        <select id="sort">
+          <option value="bytes">bytes</option>
+          <option value="files">files</option>
+          <option value="largest">biggest file</option>
+          <option value="newest">newest file</option>
+          <option value="oldest">oldest file</option>
+          <option value="label">name</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="onlyUsed" /> <span>only typologies in use</span></label>
+      <button id="exportCsv" type="button" class="act" title="one row per typology">csv</button>
+      <button id="exportJson" type="button" class="act">json</button>
+    </section>
+
+    <section class="progress" id="progress" hidden>
+      <div class="progresshead">
+        <span class="phase" id="progressPhase">walking</span>
+        <span id="progressDetail"></span>
+        <span class="rate" id="progressRate"></span>
+      </div>
+      <div class="track"><span id="progressBar"></span></div>
+    </section>
+
+    <main class="ftmain">
+      <section class="panel">
+        <h2>
+          typologies
+          <span class="hint" id="typesMeta">no scan yet</span>
+        </h2>
+        <div id="typesBody" class="scanbody">
+          <p class="empty">press <b>scan</b> to classify the configured roots by file type</p>
+        </div>
+      </section>
+
+      <aside class="ftside">
+        <section class="panel">
+          <h2>scan</h2>
+          <div class="ftpadi" id="scanPanel"></div>
+        </section>
+
+        <section class="panel">
+          <h2>bytes by typology</h2>
+          <div class="ftpadi" id="byTypology"></div>
+        </section>
+
+        <section class="panel">
+          <h2>bytes by extension</h2>
+          <div class="ftpadi" id="byExtension"></div>
+        </section>
+
+        <section class="panel">
+          <h2>bytes by folder</h2>
+          <div class="ftpadi" id="byFolder"></div>
+        </section>
+
+        <section class="panel">
+          <h2>biggest files</h2>
+          <div class="ftpadi" id="biggest"></div>
+        </section>
+      </aside>
+    </main>
+
+    <footer>
+      <span id="note"></span>
+      <span class="hint">read-only: this page reads names and sizes, it never opens, moves or deletes a file</span>
+      <span class="hint">a typology is the extension a file carries, which is what Explorer shows &mdash; a renamed file counts under its current name</span>
+    </footer>
+
+    <dialog id="detail">
+      <div id="detailBody"></div>
+      <div class="dialogfoot">
+        <button id="detailClose" type="button">close</button>
+      </div>
+    </dialog>
+
+    <script src="typologies.js" type="module"></script>
+  </body>
+</html>

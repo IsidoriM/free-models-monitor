@@ -6,6 +6,7 @@
     <title>free models monitor</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Cpath d='M8 21l4-10 4 7 4-4 4 7' stroke='%2334d399' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="dashboard.css" />
   </head>
   <body>
     <header class="topbar">
@@ -14,6 +15,10 @@
         <h1>free models monitor</h1>
         <span class="sub" id="source">openrouter</span>
       </div>
+      <nav class="menu" aria-label="sections">
+        <a href="/typologies">FileTypologies</a>
+        <a href="/origins">ModelOrigins</a>
+      </nav>
       <div class="stats" id="stats"></div>
       <div class="meta">
         <span id="updated">connecting...</span>
@@ -71,14 +76,25 @@
         </div>
       </section>
 
-      <section class="panel dupes">
+      <section class="panel characteristics">
         <h2>
-          duplicate files
-          <span class="hint" id="dupesMeta">not scanned yet</span>
-          <button id="dupesScan" type="button" class="act">scan</button>
+          model characteristics
+          <span class="hint" id="characteristicsMeta">waiting for the first snapshot</span>
         </h2>
-        <div id="dupesBody" class="dupesbody">
-          <p class="empty">no scan yet &mdash; press <b>scan</b> to hash your home folder</p>
+        <div id="cards" class="mcardgrid">
+          <p class="empty">no snapshot yet</p>
+        </div>
+      </section>
+
+      <section class="panel trojans">
+        <h2>
+          trojan files
+          <span class="hint" id="trojansMeta">not scanned yet</span>
+          <button id="trojansScan" type="button" class="act">scan</button>
+          <button id="trojansCancel" type="button" class="act" disabled>cancel</button>
+        </h2>
+        <div id="trojansBody" class="scanbody">
+          <p class="empty">no scan yet &mdash; press <b>scan</b> to inspect the names, folders and first bytes of the files on disk</p>
         </div>
       </section>
 
@@ -93,7 +109,7 @@
     <footer>
       <span id="errors"></span>
       <span class="hint">free tier = zero prompt &amp; completion price. uptime/latency come from provider telemetry.</span>
-      <span class="hint">duplicate scan is read-only: it reports copies, it never deletes anything.</span>
+      <span class="hint">trojan scan is read-only heuristics, not antivirus: it flags suspects, it never deletes, quarantines or runs anything.</span>
     </footer>
 
     <dialog id="detail">

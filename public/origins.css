@@ -1,0 +1,126 @@
+/* Model origins page: sits on top of styles.css tokens, only adds layout here. */
+
+.ormain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  padding: 16px 20px 28px;
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .ormain { grid-template-columns: minmax(0, 1fr); }
+}
+
+.orside {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.orpadi {
+  padding: 10px 14px 12px;
+}
+
+.orpadi .empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ortable th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ortable th[data-sort]:hover { color: var(--text); }
+
+.ortable tbody tr { cursor: pointer; }
+.ortable tbody tr:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+
+.orcountry {
+  white-space: normal;
+  min-width: 200px;
+}
+
+.orhead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.oriso {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0 5px;
+  line-height: 16px;
+  flex: none;
+}
+
+.oriso.unknown {
+  color: var(--yellow);
+  border-color: #4a3a12;
+  background: #1c1710;
+}
+
+.orlabs {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin: 5px 0 0;
+}
+
+.orname {
+  font-weight: 560;
+}
+
+.orbar {
+  display: inline-block;
+  width: 68px;
+  height: 6px;
+  background: #182230;
+  border-radius: 999px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: 7px;
+}
+
+.orbar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2dd4a7, #34d399);
+}
+
+.orwhen {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.orlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.orlist li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid #141c26;
+  padding: 4px 0 0;
+}
+
+.orlist li:first-child { border-top: none; padding-top: 0; }
+
+.orlist .barlabel {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+dialog td:last-child { color: var(--muted); }

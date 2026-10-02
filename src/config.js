@@ -38,11 +38,11 @@ const dataDir = path.resolve(rootDir, text(process.env.DATA_DIR, 'data'));
 const apiKey = text(process.env.OPENROUTER_API_KEY, '');
 
 /**
- * Directory names skipped by the duplicate scanner. These hold caches, build
- * artefacts and virtual filesystems: scanning them wastes minutes and floods
- * the report with copies nobody would ever delete by hand.
+ * Directory names skipped by the read-only scanners. These hold caches, build
+ * artefacts and virtual filesystems: walking them wastes minutes and floods the
+ * report with noise nobody would ever act on by hand.
  */
-export const DUPLICATE_EXCLUDE_DEFAULT = [
+export const SCAN_EXCLUDE_DEFAULT = [
   'AppData',
   '$Recycle.Bin',
   'System Volume Information',
@@ -67,6 +67,22 @@ export const DUPLICATE_EXCLUDE_DEFAULT = [
   '.parcel-cache',
   '.DS_Store',
 ];
+
+/**
+ * Directory names skipped by the trojan scanner too: the same caches, build artefacts
+ * and virtual filesystems, which would bury a handful of real suspects in noise.
+ */
+export const TROJAN_EXCLUDE_DEFAULT = [...SCAN_EXCLUDE_DEFAULT];
+
+/**
+ * The typology census shares the same skips: caches, build artefacts and virtual
+ * filesystems describe the tooling, not the files a person keeps.
+ */
+export const TYPOLOGY_EXCLUDE_DEFAULT = [...SCAN_EXCLUDE_DEFAULT];
+
+const homeDir = os.homedir();
+const tempDir = text(process.env.TEMP, '') || os.tmpdir();
+const startupDir = path.join(homeDir, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
 
 export const config = {
   rootDir,
@@ -93,16 +109,37 @@ export const config = {
     maxTokens: Math.max(1, int(process.env.PROBE_MAX_TOKENS, 8)),
   },
 
-  duplicates: {
-    enabled: bool(process.env.DUPLICATES_ENABLED, true),
-    roots: list(process.env.DUPLICATE_ROOTS, os.homedir()),
-    exclude: list(process.env.DUPLICATE_EXCLUDE, DUPLICATE_EXCLUDE_DEFAULT),
-    minSizeBytes: Math.max(1, int(process.env.DUPLICATE_MIN_SIZE_BYTES, 1024)),
-    maxFileBytes: Math.max(0, int(process.env.DUPLICATE_MAX_FILE_BYTES, 536_870_912)),
-    maxFiles: Math.max(1_000, int(process.env.DUPLICATE_MAX_FILES, 750_000)),
-    maxDepth: Math.max(1, int(process.env.DUPLICATE_MAX_DEPTH, 12)),
-    concurrency: Math.max(1, int(process.env.DUPLICATE_CONCURRENCY, 6)),
-    topGroups: Math.max(1, int(process.env.DUPLICATE_TOP_GROUPS, 300)),
+  trojans: {
+    enabled: bool(process.env.TROJANS_ENABLED, true),
+    roots: list(process.env.TROJAN_ROOTS, homeDir),
+    exclude: list(process.env.TROJAN_EXCLUDE, TROJAN_EXCLUDE_DEFAULT),
+    // Where a payload usually lands: anything runnable in there is worth a second look.
+    hotDirs: list(process.env.TROJAN_HOT_DIRS, [path.join(homeDir, 'Downloads'), path.join(homeDir, 'Desktop'), tempDir].join(';')),
+    hotDirNames: list(process.env.TROJAN_HOT_DIR_NAMES, 'Downloads;Desktop'),
+    startupDirs: list(process.env.TROJAN_STARTUP_DIRS, startupDir),
+    minSizeBytes: Math.max(1, int(process.env.TROJAN_MIN_SIZE_BYTES, 1)),
+    maxFileBytes: Math.max(0, int(process.env.TROJAN_MAX_FILE_BYTES, 536_870_912)),
+    // Files above this are still listed by name rules but their bytes are not read.
+    maxInspectBytes: Math.max(0, int(process.env.TROJAN_MAX_INSPECT_BYTES, 67_108_864)),
+    maxFiles: Math.max(1_000, int(process.env.TROJAN_MAX_FILES, 750_000)),
+    maxDepth: Math.max(1, int(process.env.TROJAN_MAX_DEPTH, 12)),
+    concurrency: Math.max(1, int(process.env.TROJAN_CONCURRENCY, 8)),
+    topFindings: Math.max(1, int(process.env.TROJAN_TOP_FINDINGS, 300)),
+    recentDays: Math.max(0, int(process.env.TROJAN_RECENT_DAYS, 30)),
+  },
+
+  typologies: {
+    enabled: bool(process.env.TYPOLOGIES_ENABLED, true),
+    roots: list(process.env.TYPOLOGY_ROOTS, homeDir),
+    exclude: list(process.env.TYPOLOGY_EXCLUDE, TYPOLOGY_EXCLUDE_DEFAULT),
+    // A census wants every file, including empty placeholders, so no size floor by default.
+    minSizeBytes: Math.max(0, int(process.env.TYPOLOGY_MIN_SIZE_BYTES, 0)),
+    maxFileBytes: Math.max(0, int(process.env.TYPOLOGY_MAX_FILE_BYTES, 0)),
+    maxFiles: Math.max(1_000, int(process.env.TYPOLOGY_MAX_FILES, 750_000)),
+    maxDepth: Math.max(1, int(process.env.TYPOLOGY_MAX_DEPTH, 12)),
+    concurrency: Math.max(1, int(process.env.TYPOLOGY_CONCURRENCY, 8)),
+    topExtensions: Math.max(1, int(process.env.TYPOLOGY_TOP_EXTENSIONS, 20)),
+    topFolders: Math.max(1, int(process.env.TYPOLOGY_TOP_FOLDERS, 20)),
   },
 };
 

@@ -1,13 +1,15 @@
 import { config } from './config.js';
-import { DuplicateScanner } from './core/duplicates.js';
 import { Monitor } from './core/monitor.js';
 import { createServer } from './core/server.js';
+import { TrojanScanner } from './core/trojans.js';
+import { TypologyScanner } from './core/typologies.js';
 import { createOpenRouterSource } from './sources/openrouter.js';
 
 const source = createOpenRouterSource(config);
 const monitor = new Monitor({ source, config });
-const duplicates = config.duplicates.enabled ? new DuplicateScanner({ config: config.duplicates }) : null;
-const { server } = createServer({ monitor, config, duplicates });
+const trojans = config.trojans.enabled ? new TrojanScanner({ config: config.trojans }) : null;
+const typologies = config.typologies.enabled ? new TypologyScanner({ config: config.typologies }) : null;
+const { server } = createServer({ monitor, config, trojans, typologies });
 
 let shuttingDown = false;
 const shutdown = (signal) => {
@@ -15,7 +17,8 @@ const shutdown = (signal) => {
   shuttingDown = true;
   console.log(`\n${signal} received, shutting down.`);
   monitor.stop();
-  duplicates?.cancel();
+  trojans?.cancel();
+  typologies?.cancel();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 };
@@ -40,5 +43,6 @@ server.listen(config.port, config.host, () => {
       `probes ${config.probe.enabled ? 'on' : 'off'}`,
   );
   if (first.failures.length) console.log(`endpoint fetch failures: ${first.failures.length}`);
-  if (duplicates) console.log(`duplicate scanner ready over ${duplicates.getStatus().roots.join(', ')}`);
+  if (trojans) console.log(`trojan scanner ready over ${trojans.getStatus().roots.join(', ')}`);
+  if (typologies) console.log(`typology scanner ready over ${typologies.getStatus().roots.join(', ')}`);
 });

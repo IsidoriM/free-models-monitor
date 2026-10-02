@@ -8,8 +8,24 @@ const state = {
   status: null,
   feed: [],
   lastSnapshotAt: 0,
-  dupes: { status: { state: 'unavailable' }, result: null },
+  trojans: { status: { state: 'idle' }, result: null },
 };
+
+/** Characteristics shown on the cards; the detail dialog lists all of them. */
+const CARD_KEYS = [
+  'context',
+  'output',
+  'modality',
+  'tokenizer',
+  'providers',
+  'uptime5m',
+  'uptime1d',
+  'latency',
+  'throughput',
+  'intelligence',
+  'created',
+  'expires',
+];
 
 const SORT_KEYS = {
   score: (m) => -m.score,
@@ -99,12 +115,147 @@ function deltaHtml(delta) {
   return `<span class="delta ${cls}">${delta > 0 ? '\u25b2' : '\u25bc'} ${Math.abs(delta)}</span>`;
 }
 
+function matchesQuery(model) {
+  const query = state.query.trim().toLowerCase();
+  if (!query) return true;
+  return model.id.toLowerCase().includes(query) || (model.name ?? '').toLowerCase().includes(query);
+}
+
+function reasoningLabel(reasoning) {
+  if (!reasoning || typeof reasoning !== 'object') return 'no';
+  if (reasoning.mandatory) return 'yes, always on';
+  if (reasoning.default_enabled) return 'yes, on by default';
+  return 'yes, opt-in';
+}
+
+/** Short badges for what a model can actually do, derived from the raw metadata. */
+function capabilityTags(model) {
+  const parameters = model.supportedParameters ?? [];
+  const modality = model.modality ?? '';
+  const tags = [];
+  const reasoning = reasoningLabel(model.reasoning);
+  if (reasoning !== 'no') tags.push(reasoning);
+  if (parameters.includes('tools') || parameters.includes('tool_choice')) tags.push('tools');
+  if (parameters.includes('structured_outputs')) tags.push('structured output');
+  if (parameters.includes('response_format')) tags.push('json mode');
+  for (const [needle, label] of [['image', 'vision'], ['audio', 'audio'], ['video', 'video']]) {
+    if (modality.includes(needle)) tags.push(label);
+  }
+  if (model.moderated) tags.push('moderated');
+  if (model.huggingFaceId) tags.push('hugging face');
+  if (model.estimatedCapability) tags.push('capability estimated');
+  return tags;
+}
+
+/**
+ * One row per characteristic of a model. The dashboard cards and the detail
+ * dialog both read from here, so the two views can never drift apart.
+ */
+function modelCharacteristics(model) {
+  const telemetry = model.telemetry ?? {};
+  const benchmarks = model.benchmarks ?? {};
+  const providers = telemetry.freeProviders ?? [];
+  const parameters = model.supportedParameters ?? [];
+  const index = (value) => (typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : 'n/a');
+  const tokens = (value) => (typeof value === 'number' && value > 0 ? value.toLocaleString() : '-');
+
+  return [
+    { key: 'context', label: 'context window', value: tokens(model.contextLength) },
+    { key: 'output', label: 'max output tokens', value: tokens(model.maxOutputTokens) },
+    { key: 'modality', label: 'modality', value: model.modality || (model.inputModalities ?? []).join('+') || '-' },
+    { key: 'tokenizer', label: 'tokenizer', value: model.tokenizer ?? '-' },
+    {
+      key: 'providers',
+      label: 'free providers',
+      value: `${telemetry.liveFree ?? 0} live / ${model.endpoints?.length ?? 0}`,
+      title: providers.join(', ') || 'no free endpoint',
+    },
+    { key: 'uptime5m', label: 'uptime 5m', value: fmt.pct(telemetry.bestUptime5m) },
+    { key: 'uptime1d', label: 'uptime 24h', value: fmt.pct(telemetry.bestUptime1d) },
+    { key: 'latency', label: 'latency 30m', value: fmt.ms(telemetry.bestLatencyMs) },
+    { key: 'throughput', label: 'throughput 30m', value: fmt.tps(telemetry.bestThroughputTps) },
+    { key: 'intelligence', label: 'intelligence index', value: index(benchmarks.intelligence) },
+    { key: 'coding', label: 'coding index', value: index(benchmarks.coding) },
+    { key: 'agentic', label: 'agentic index', value: index(benchmarks.agentic) },
+    { key: 'created', label: 'created', value: model.createdAt?.slice(0, 10) ?? '-' },
+    {
+      key: 'expires',
+      label: 'expires',
+      value: model.expiresAt ? `${model.expiresAt.slice(0, 10)} (${model.expiry?.daysLeft ?? '?'}d left)` : 'never',
+    },
+    { key: 'reasoning', label: 'reasoning', value: reasoningLabel(model.reasoning) },
+    { key: 'moderated', label: 'moderated', value: model.moderated === null || model.moderated === undefined ? 'n/a' : model.moderated ? 'yes' : 'no' },
+    { key: 'parameters', label: 'parameters', value: `${parameters.length}`, title: parameters.join(', ') || 'none reported' },
+    { key: 'huggingface', label: 'hugging face id', value: model.huggingFaceId ?? '-' },
+  ];
+}
+
+function tagChips(labels, tone = '') {
+  const cls = tone ? `tag ${tone}` : 'tag';
+  return labels.map((label) => `<span class="${cls}">${escapeHtml(label)}</span>`).join('');
+}
+
+const specHtml = (spec) => `<div class="spec"${spec.title ? ` title="${escapeHtml(spec.title)}"` : ''}>
+  <dt>${escapeHtml(spec.label)}</dt>
+  <dd title="${escapeHtml(spec.value)}">${escapeHtml(spec.value)}</dd>
+</div>`;
+
+/**
+ * The characteristics dashboard: one card per top 20 model with its description,
+ * its specs and its free providers. Rank order is kept whatever the board sorts by.
+ */
+function renderCharacteristics() {
+  const snapshot = state.snapshot;
+  const container = el('cards');
+  if (!snapshot) return;
+
+  const models = snapshot.models.filter(matchesQuery).sort((a, b) => a.rank - b.rank);
+  el('characteristicsMeta').textContent = state.query.trim()
+    ? `${models.length} of ${snapshot.models.length} match "${state.query.trim()}"`
+    : `all ${models.length} top models, ordered by rank`;
+
+  if (!models.length) {
+    container.innerHTML = '<p class="empty">no tracked model matches the search</p>';
+    return;
+  }
+
+  container.innerHTML = models
+    .map((model) => {
+      const description = (model.description ?? '').trim() || 'no description published upstream';
+      const specs = modelCharacteristics(model).filter((spec) => CARD_KEYS.includes(spec.key));
+      const providers = model.telemetry?.freeProviders ?? [];
+      const scoreDelta = model.scoreDelta
+        ? `<small>${model.scoreDelta > 0 ? '+' : ''}${model.scoreDelta.toFixed(1)}</small>`
+        : '';
+      return `<article class="mcard" data-id="${escapeHtml(model.id)}">
+        <header class="mcardhead">
+          <span class="rank">#${model.rank}</span>
+          <div class="mcardname">
+            <span class="name" title="${escapeHtml(model.name ?? model.id)}">${escapeHtml(model.name ?? model.id)}</span>
+            <span class="path" title="${escapeHtml(model.id)}">${escapeHtml(model.id)}</span>
+          </div>
+          <span class="score">${model.score.toFixed(1)}${scoreDelta}</span>
+        </header>
+        <div class="tags">${tagChips([statusLabel(model)], statusClass(model))}${tagChips(capabilityTags(model))}</div>
+        <p class="mcarddesc" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
+        <dl class="mcardspecs">${specs.map(specHtml).join('')}</dl>
+        <footer class="mcardfoot">
+          <span class="mcardprovs" title="${escapeHtml(providers.join(', ') || 'no free provider')}">
+            ${tagChips(providers.length ? providers.slice(0, 3) : ['no free provider'])}
+          </span>
+          ${scoreMix(model)}
+        </footer>
+      </article>`;
+    })
+    .join('');
+}
+
 function renderRows() {
   const snapshot = state.snapshot;
   if (!snapshot) return;
   const query = state.query.trim().toLowerCase();
   const models = [...snapshot.models]
-    .filter((model) => !query || model.id.toLowerCase().includes(query) || (model.name ?? '').toLowerCase().includes(query))
+    .filter(matchesQuery)
     .sort((a, b) => {
       const primary = (SORT_KEYS[state.sort] ?? SORT_KEYS.score)(a) - (SORT_KEYS[state.sort] ?? SORT_KEYS.score)(b);
       return primary || a.rank - b.rank;
@@ -216,18 +367,23 @@ function renderErrors() {
     : '';
 }
 
-function renderDupesMeta(status) {
-  const button = el('dupesScan');
-  button.disabled = status.state === 'scanning' || status.state === 'unavailable';
-  button.textContent = status.state === 'scanning' ? 'scanning...' : 'scan';
+const SEVERITY_CLASS = { high: 'sev-high', medium: 'sev-med', low: 'sev-low' };
 
-  const label = el('dupesMeta');
+function renderTrojansMeta(status) {
+  const scan = el('trojansScan');
+  const cancel = el('trojansCancel');
+  scan.disabled = status.state === 'scanning' || status.state === 'unavailable';
+  scan.textContent = status.state === 'scanning' ? 'scanning...' : 'scan';
+  cancel.disabled = status.state !== 'scanning';
+
+  const label = el('trojansMeta');
   if (status.state === 'unavailable') {
     label.textContent = 'disabled';
     return;
   }
   if (status.state === 'scanning') {
-    label.textContent = `${status.phase} ${status.phase === 'walking' ? status.filesSeen.toLocaleString() : status.candidatesHashed.toLocaleString()} files`;
+    const count = status.phase === 'inspecting' ? status.inspected : status.filesSeen;
+    label.textContent = `${status.phase} ${count.toLocaleString()} files`;
     return;
   }
   if (status.state === 'cancelled') {
@@ -245,26 +401,28 @@ function renderDupesMeta(status) {
   const parts = [
     `${(status.durationMs / 1000).toFixed(1)}s`,
     `${status.filesSeen.toLocaleString()} files walked`,
-    `${status.candidatesHashed.toLocaleString()} hashed`,
+    `${status.inspected.toLocaleString()} read`,
+    `${status.findings.toLocaleString()} suspects`,
   ];
   if (status.unreadable) parts.push(`${status.unreadable} unreadable`);
   if (status.truncated) parts.push('hit the file cap');
   label.textContent = `${parts.join(' \u00b7 ')} \u00b7 scanned ${fmt.time(status.finishedAt)}`;
 }
 
-function renderDupes() {
-  const status = state.dupes.status ?? {};
-  const result = state.dupes.result;
-  renderDupesMeta(status);
+function renderTrojans() {
+  const status = state.trojans.status ?? {};
+  const result = state.trojans.result;
+  renderTrojansMeta(status);
 
-  const body = el('dupesBody');
+  const body = el('trojansBody');
   if (status.state === 'unavailable') {
-    body.innerHTML = '<p class="empty">duplicate scanner disabled (DUPLICATES_ENABLED=false)</p>';
+    body.innerHTML = '<p class="empty">trojan scanner disabled (TROJANS_ENABLED=false)</p>';
     return;
   }
   if (status.state === 'scanning') {
-    const phase = status.phase === 'hashing' ? status.candidatesHashed : status.filesSeen;
-    body.innerHTML = `<p class="empty">${escapeHtml(status.phase)} &hellip; ${phase.toLocaleString()} ${status.phase === 'hashing' ? 'candidates hashed' : 'files seen'}</p>`;
+    const count = status.phase === 'inspecting' ? status.inspected : status.filesSeen;
+    const unit = status.phase === 'inspecting' ? 'files inspected' : 'files seen';
+    body.innerHTML = `<p class="empty">${escapeHtml(status.phase)} &hellip; ${count.toLocaleString()} ${unit}</p>`;
     return;
   }
   if (status.state === 'error') {
@@ -272,7 +430,7 @@ function renderDupes() {
     return;
   }
   if (status.state !== 'done') {
-    body.innerHTML = `<p class="empty">no scan yet &mdash; press <b>scan</b> to hash ${escapeHtml((status.roots ?? []).join(', ') || 'the configured roots')}</p>`;
+    body.innerHTML = `<p class="empty">no scan yet &mdash; press <b>scan</b> to inspect ${escapeHtml((status.roots ?? []).join(', ') || 'the configured roots')}</p>`;
     return;
   }
   if (!result) {
@@ -280,95 +438,101 @@ function renderDupes() {
     return;
   }
 
-  const { totals, groups, groupsTruncated } = result;
+  const { totals, findings, findingsTruncated, topRules } = result;
   const cards = [
-    ['recoverable', fmt.bytes(totals.wastedBytes), totals.wastedBytes ? 'warn' : 'good'],
-    ['groups', totals.groups.toLocaleString(), ''],
-    ['copies', totals.duplicateFiles.toLocaleString(), ''],
-    ['redundant', totals.wastedFiles.toLocaleString(), ''],
-    ['min size', fmt.bytes(result.minSizeBytes), ''],
+    ['suspects', totals.findings.toLocaleString(), totals.high ? 'bad' : 'good'],
+    ['high', totals.high.toLocaleString(), totals.high ? 'bad' : ''],
+    ['medium', totals.medium.toLocaleString(), totals.medium ? 'warn' : ''],
+    ['low', totals.low.toLocaleString(), ''],
+    ['inspected', totals.inspected.toLocaleString(), ''],
+    ['suspect bytes', fmt.bytes(totals.bytes), ''],
   ]
     .map(([label, value, tone]) => `<div class="stat ${tone}"><b>${escapeHtml(String(value))}</b><span>${label}</span></div>`)
     .join('');
 
-  const rows = groups
+  const chips = topRules.length
+    ? `<div class="rulechips">${topRules
+        .map((rule) => `<span class="chip" title="${escapeHtml(rule.label)}">${escapeHtml(rule.label)} &middot; ${rule.count}</span>`)
+        .join('')}</div>`
+    : '';
+
+  const rows = findings
     .map(
-      (group) => `<tr data-hash="${escapeHtml(group.shortHash)}">
-        <td class="num"><span class="score">${escapeHtml(fmt.bytes(group.wasted))}</span></td>
-        <td class="num">${escapeHtml(fmt.bytes(group.size))}</td>
-        <td class="num">${group.count}</td>
-        <td class="hash" title="sha256 ${escapeHtml(group.hash)}">${escapeHtml(group.shortHash)}</td>
-        <td class="paths">${group.paths
-          .map(
-            (file) =>
-              `<span class="path" title="${escapeHtml(file.path)}\u2003\u00b7\u2003modified ${escapeHtml(file.modifiedAt)}">${escapeHtml(file.path)}</span>`,
-          )
+      (finding) => `<tr data-path="${escapeHtml(finding.path)}" class="${finding.severity === 'low' ? 'dim' : ''}">
+        <td><span class="sev ${SEVERITY_CLASS[finding.severity]}">${escapeHtml(finding.severity)}</span></td>
+        <td class="num">${finding.score}</td>
+        <td class="num">${escapeHtml(fmt.bytes(finding.size))}</td>
+        <td class="num" title="${escapeHtml(finding.modifiedAt)}">${finding.ageDays}d</td>
+        <td class="paths"><span class="path" title="${escapeHtml(finding.path)}">${escapeHtml(finding.path)}</span></td>
+        <td class="signals">${finding.reasons
+          .map((reason) => `<span class="signal">${escapeHtml(reason.label)}</span>`)
           .join('')}</td>
       </tr>`,
     )
     .join('');
 
-  body.innerHTML = `<div class="dupestats">${cards}</div>${
-    groups.length
+  body.innerHTML = `<div class="scanstats">${cards}</div>${chips}${
+    findings.length
       ? `<div class="tablewrap"><table>
           <thead><tr>
-            <th class="num">recoverable</th><th class="num">each</th><th class="num">copies</th><th>sha256</th><th>paths</th>
+            <th>severity</th><th class="num">score</th><th class="num">size</th><th class="num">age</th><th>path</th><th>signals</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table></div>${
-        groupsTruncated ? `<p class="empty">showing the top ${result.groupsShown} groups by recoverable space</p>` : ''
+        findingsTruncated ? `<p class="empty">showing the top ${result.findingsShown} suspects by score</p>` : ''
       }`
-      : '<p class="empty">no duplicates found above the size threshold</p>'
+      : '<p class="empty">nothing matched the heuristics &mdash; not a clean bill of health, just no signals</p>'
   }`;
 }
 
-function renderAll() {
-  renderStats();
-  renderRows();
-  renderFeed();
-  renderExtras();
-  renderErrors();
-  renderDupes();
-  const status = state.status ?? {};
-  el('updated').textContent = `updated ${fmt.time(state.snapshot?.generatedAt)}`;
-  el('next').textContent = `next poll ${fmt.time(status.nextRunAt)}`;
-  el('cycle').textContent = `cycle ${status.cycles ?? 0}${status.probeEnabled ? ' \u00b7 probes on' : ''}`;
-}
-
-function openDupeDetail(hash) {
-  const group = (state.dupes.result?.groups ?? []).find((entry) => entry.shortHash === hash);
-  if (!group) return;
-  const rows = group.paths
+function openTrojanDetail(filePath) {
+  const finding = (state.trojans.result?.findings ?? []).find((entry) => entry.path === filePath);
+  if (!finding) return;
+  const rows = finding.reasons
     .map(
-      (file) => `<tr>
-        <td>${escapeHtml(file.path)}</td>
-        <td class="num">${escapeHtml(fmt.bytes(file.size))}</td>
-        <td class="num">${escapeHtml(file.modifiedAt.slice(0, 19).replace('T', ' '))}</td>
+      (reason) => `<tr>
+        <td>${escapeHtml(reason.label)}</td>
+        <td class="num">${reason.weight}</td>
+        <td>${escapeHtml(reason.detail ?? '-')}</td>
       </tr>`,
     )
     .join('');
   el('detailBody').innerHTML = `<div class="body">
-    <h3>${group.count} identical copies</h3>
-    <div class="sub">${escapeHtml(fmt.bytes(group.size))} each &middot; ${escapeHtml(fmt.bytes(group.wasted))} recoverable &middot; sha256 ${escapeHtml(group.hash)}</div>
-    <p>Byte-for-byte identical (SHA-256), so every copy after the first is redundant. This panel only reports &mdash; review the paths and delete them yourself.</p>
-    <table><thead><tr><th>path</th><th class="num">size</th><th class="num">modified</th></tr></thead>
+    <h3>${escapeHtml(finding.name)}</h3>
+    <div class="sub">${escapeHtml(finding.severity)} severity &middot; score ${finding.score} &middot; ${escapeHtml(fmt.bytes(finding.size))} &middot; modified ${escapeHtml(finding.modifiedAt.slice(0, 19).replace('T', ' '))}</div>
+    <p>${escapeHtml(finding.path)}</p>
+    <p>Heuristics only: nothing here proves the file is malware. Open it in an antivirus or Defender scan before running it, check the signature of a real download, and prefer removing a file you cannot explain over keeping one you cannot verify. This panel never deletes, quarantines or executes anything.</p>
+    <h4>signals</h4>
+    <table><thead><tr><th>rule</th><th class="num">weight</th><th>why</th></tr></thead>
       <tbody>${rows}</tbody></table>
   </div>`;
   el('detail').showModal();
 }
 
-async function startDupeScan() {
-  el('dupesScan').disabled = true;
+async function startTrojanScan() {
+  el('trojansScan').disabled = true;
   try {
-    const response = await fetch('/api/duplicates/scan', { method: 'POST' });
+    const response = await fetch('/api/trojans/scan', { method: 'POST' });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
-    state.dupes.status = payload.status ?? { ...state.dupes.status, state: 'scanning' };
-    renderDupes();
+    state.trojans.status = payload.status ?? { ...state.trojans.status, state: 'scanning' };
+    renderTrojans();
   } catch (error) {
-    state.dupes.status = { ...state.dupes.status, state: 'error', error: error.message };
-    renderDupes();
+    state.trojans.status = { ...state.trojans.status, state: 'error', error: error.message };
+    renderTrojans();
   }
+}
+
+async function cancelTrojanScan() {
+  el('trojansCancel').disabled = true;
+  try {
+    const response = await fetch('/api/trojans/cancel', { method: 'POST' });
+    const payload = await response.json();
+    if (response.ok && payload.status) state.trojans.status = payload.status;
+  } catch {
+    /* the next update tick carries the real state */
+  }
+  renderTrojans();
 }
 
 async function loadHistory(id) {
@@ -402,9 +566,9 @@ function connect() {
     renderFeed();
   });
   events.addEventListener('error', () => setPulse('stale'));
-  events.addEventListener('duplicates', (event) => {
-    state.dupes = JSON.parse(event.data);
-    renderDupes();
+events.addEventListener('trojans', (event) => {
+    state.trojans = JSON.parse(event.data);
+    renderTrojans();
   });
   events.onerror = () => setPulse('stale');
 }
@@ -415,10 +579,26 @@ function setPulse(mode) {
   el('source').textContent = mode === 'live' ? 'openrouter \u00b7 live' : mode === 'stale' ? 'openrouter \u00b7 reconnecting' : 'openrouter';
 }
 
+function renderAll() {
+  renderStats();
+  renderRows();
+  renderCharacteristics();
+  renderFeed();
+  renderExtras();
+  renderErrors();
+  renderTrojans();
+  const status = state.status ?? {};
+  el('updated').textContent = `updated ${fmt.time(state.snapshot?.generatedAt)}`;
+  el('next').textContent = `next poll ${fmt.time(status.nextRunAt)}`;
+  el('cycle').textContent = `cycle ${status.cycles ?? 0}${status.probeEnabled ? ' \u00b7 probes on' : ''}`;
+}
+
 function openDetail(id) {
   const model = (state.snapshot?.models ?? []).find((m) => m.id === id) ?? (state.snapshot?.extras ?? []).find((m) => m.id === id);
   if (!model) return;
   const kv = (label, value) => `<div class="kv"><span>${label}</span><span>${escapeHtml(String(value ?? '-'))}</span></div>`;
+  const characteristics = modelCharacteristics(model).map((spec) => kv(spec.label, spec.value)).join('');
+  const capabilities = capabilityTags(model);
   const endpointRows = model.endpoints
     .filter((endpoint) => endpoint.free)
     .map(
@@ -437,21 +617,10 @@ function openDetail(id) {
     <h3>${escapeHtml(model.id)}</h3>
     <div class="sub">${escapeHtml(model.name ?? '')} &middot; rank #${model.rank ?? '-'} &middot; score ${model.score.toFixed(1)} &middot; <a href="${escapeHtml(model.url)}" target="_blank" rel="noreferrer">openrouter</a></div>
     <p>${escapeHtml(model.description ?? 'no description')}</p>
+    ${capabilities.length ? `<h4>capabilities</h4><div class="capabilities">${tagChips(capabilities)}</div>` : ''}
+    <h4>characteristics</h4>
     <div class="grid2">
-      ${kv('context window', fmt.ctx(model.contextLength) === '-' ? '-' : model.contextLength.toLocaleString())}
-      ${kv('max output tokens', model.maxOutputTokens?.toLocaleString() ?? '-')}
-      ${kv('modality', model.modality ?? '-')}
-      ${kv('tokenizer', model.tokenizer ?? '-')}
-      ${kv('free providers', model.telemetry.liveFree)}
-      ${kv('providers total', model.endpoints.length)}
-      ${kv('best uptime 5m', fmt.pct(model.telemetry.bestUptime5m))}
-      ${kv('best uptime 24h', fmt.pct(model.telemetry.bestUptime1d))}
-      ${kv('latency 30m', fmt.ms(model.telemetry.bestLatencyMs))}
-      ${kv('throughput 30m', fmt.tps(model.telemetry.bestThroughputTps))}
-      ${kv('intelligence index', model.benchmarks?.intelligence ?? 'unpublished')}
-      ${kv('coding / agentic', `${model.benchmarks?.coding ?? '-'} / ${model.benchmarks?.agentic ?? '-'}`)}
-      ${kv('created', model.createdAt?.slice(0, 10) ?? '-')}
-      ${kv('expires', model.expiresAt ? `${model.expiresAt.slice(0, 10)} (${model.expiry.daysLeft}d left)` : 'never')}
+      ${characteristics}
       ${model.probe ? kv('probe', `${model.probe.ok ? 'ok' : 'fail'} in ${model.probe.latencyMs}ms`) : ''}
     </div>
     <h4>score mix</h4>
@@ -474,20 +643,26 @@ el('sort').addEventListener('change', (event) => {
 el('search').addEventListener('input', (event) => {
   state.query = event.target.value;
   renderRows();
+  renderCharacteristics();
 });
 el('rows').addEventListener('click', (event) => {
   const row = event.target.closest('tr[data-id]');
   if (row) openDetail(row.dataset.id);
+});
+el('cards').addEventListener('click', (event) => {
+  const card = event.target.closest('.mcard[data-id]');
+  if (card) openDetail(card.dataset.id);
 });
 el('extrasList').addEventListener('click', (event) => {
   const item = event.target.closest('li[data-id]');
   if (item) openDetail(item.dataset.id);
 });
 el('detailClose').addEventListener('click', () => el('detail').close());
-el('dupesScan').addEventListener('click', startDupeScan);
-el('dupesBody').addEventListener('click', (event) => {
-  const row = event.target.closest('tr[data-hash]');
-  if (row) openDupeDetail(row.dataset.hash);
+el('trojansScan').addEventListener('click', startTrojanScan);
+el('trojansCancel').addEventListener('click', cancelTrojanScan);
+el('trojansBody').addEventListener('click', (event) => {
+  const row = event.target.closest('tr[data-path]');
+  if (row) openTrojanDetail(row.dataset.path);
 });
 
 setInterval(() => {
